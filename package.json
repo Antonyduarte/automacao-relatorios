@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Automatiza a geração do relatório de acessos (Catraca Refeitório) no TrueSafe Cloud e limpa a planilha resultante.",
-  "main": "automatizar_relatorio.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node automatizar_relatorio.js"
+    "start": "node src/index.js"
   },
   "dependencies": {
     "csv-parse": "^5.5.6",
