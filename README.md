@@ -33,6 +33,20 @@ src/
 └── index.js
 ```
 
-`browser.js` concentra login, filtros e download. `excel.js` le CSV/XLSX e
-monta a planilha final. A remocao de duplicatas usa a combinacao `Usuario` e
-`Documento`.
+`browser.js` concentra login, filtros e download. `excel.js` processa o
+relatorio, remove duplicatas comparando a linha completa, cria uma tabela real
+e insere uma nova aba no arquivo principal. A aba recebe o nome da Data
+Inicial no formato `DD-MM-YY`.
+
+Variaveis adicionais:
+
+```env
+TIME_ZONE=America/Sao_Paulo
+EXCEL_PRINCIPAL_PATH=C:\Users\opton\Documents\Automacao\saida\Relatorios-jantar.xlsx
+DOWNLOAD_PATH=C:\Users\opton\Documents\Automacao\downloads
+HEADLESS=false
+```
+
+As datas sao calculadas automaticamente no fuso de `TIME_ZONE`: Data Inicial
+e ontem, Data Final e hoje. O arquivo principal precisa existir e ser um `.xlsx` valido. A
+automacao interrompe sem alterar o arquivo quando a aba `DD-MM-YY` ja existe.
