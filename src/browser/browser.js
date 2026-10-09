@@ -48,8 +48,35 @@ function nomeAbaDaDataInicial(dataInicial) {
   return `${dia}-${mes}-${ano.slice(-2)}`;
 }
 
+function isoParaBr(dataISO) {
+  return dataISO.split('-').reverse().join('/');
+}
+
+function adicionarDiasISO(dataISO, dias) {
+  const [ano, mes, dia] = dataISO.split('-').map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  data.setUTCDate(data.getUTCDate() + dias);
+  return toISODate(data);
+}
+
+// Monta o período de um relatório (dataInicial = dataInicialISO às
+// horaInicial, dataFinal = dia seguinte às horaFinal), a mesma regra de
+// sempre usada: dataFinal é sempre o dia imediatamente após dataInicial.
+function periodoParaDataInicial(dataInicialISO) {
+  return {
+    dataInicial: isoParaBr(dataInicialISO),
+    dataFinal: isoParaBr(adicionarDiasISO(dataInicialISO, 1)),
+  };
+}
+
 async function login(page, config) {
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
+
+  // Com um acesso já lembrado antes, o site pode passar por um loader
+  // ("Concluindo o login. Aguarde...") e cair direto nesta tela de
+  // confirmação, sem pedir e-mail/senha de novo. Trata isso aqui também,
+  // antes de procurar o formulário de login.
+  await tratarTelaLembrarAcesso(page);
 
   const jaLogado = await page.locator('text=Dashboard').first().isVisible().catch(() => false);
   if (jaLogado) {
@@ -102,6 +129,24 @@ async function login(page, config) {
     page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {}),
     botaoEntrar.click(),
   ]);
+
+  await tratarTelaLembrarAcesso(page);
+}
+
+// Depois do login, o TrueSafe às vezes pergunta "Quer que o TrueSafe lembre
+// seu acesso?" (form action="manter_conectado.php", botão
+// name="remember" value="yes"). Se aparecer, clica em "Sim"; se não
+// aparecer (sessão já lembrada, por exemplo), segue em frente normalmente.
+async function tratarTelaLembrarAcesso(page) {
+  const botaoSim = page.locator('button[name="remember"][value="yes"]').first();
+  const apareceu = await botaoSim.isVisible({ timeout: 5000 }).catch(() => false);
+  if (!apareceu) return;
+
+  console.log('Tela "Lembrar acesso" detectada, clicando em "Sim, lembrar meu acesso".');
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(() => {}),
+    botaoSim.click(),
+  ]);
 }
 
 async function abrirRelatorioAcessosFiltros(page, config) {
@@ -111,13 +156,19 @@ async function abrirRelatorioAcessosFiltros(page, config) {
   console.log('Tela "Acessos + Filtros" carregada.');
 }
 
-async function preencherPeriodoEHorario(page, config) {
-  // O período é recalculado a cada execução como ontem/hoje.
-  const { hojeISO, ontemISO } = getHojeEOntem(config.timeZone);
-  const periodo = {
-    dataInicial: ontemISO.split('-').reverse().join('/'),
-    dataFinal: hojeISO.split('-').reverse().join('/'),
-  };
+async function preencherPeriodoEHorario(page, config, periodo) {
+  // periodo = { dataInicial, dataFinal } em DD/MM/YYYY, já calculado por
+  // quem chamou (antes: sempre ontem/hoje; agora: cada data pendente).
+  //
+  // Os campos de data/hora ficam na aba "Período" (href="#periodo"). Se a
+  // aba "Bloqueios" (ou outra) estiver ativa no momento — o que acontece
+  // depois que configurarBloqueios roda, já que ela só é configurada uma
+  // vez no início —, esses campos ficam escondidos e um page.fill() nelas
+  // trava esperando ficarem visíveis para sempre. Por isso voltamos pra
+  // aba Período aqui, toda vez, antes de preencher.
+  await page.click('a[href="#periodo"]');
+  await page.locator('#periodo').waitFor({ state: 'visible' });
+
   await page.fill('#data_inicio', dataBrParaInputDate(periodo.dataInicial));
   await page.fill('#data_fim', dataBrParaInputDate(periodo.dataFinal));
   await page.fill('#hora_ini', config.horaInicial);
@@ -147,7 +198,7 @@ async function configurarBloqueios(page, config) {
   await page.locator('#bloqueios').waitFor({ state: 'visible' });
   await definirCheckbox(page, '#exibir_bloqueios_all', false);
   await page.waitForTimeout(300);
-  await definirCheckbox(page, `input[name="bloqueios[]"][value="${config.bloqueioDesejado}"]`, true);
+  await definirCheckbox(page, `input[name="bloqueios[]"][value="Catraca Refeitorio"]`, true);
   console.log('Aba "Bloqueios" configurada.');
 }
 
@@ -175,6 +226,8 @@ async function gerarEBaixarExcel(context, page, config) {
 module.exports = {
   dataBrParaInputDate,
   getHojeEOntem,
+  adicionarDiasISO,
+  periodoParaDataInicial,
   gerarEBaixarExcel,
   abrirRelatorioAcessosFiltros,
   configurarBloqueios,

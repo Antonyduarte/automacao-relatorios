@@ -1,5 +1,7 @@
+const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const ExcelJS = require('exceljs');
 const browser = require('../browser/browser');
 const { inserirRelatorioNoArquivoPrincipal } = require('../excel/excel');
 
@@ -16,37 +18,103 @@ const config = {
   arquivoPrincipal: process.env.EXCEL_PRINCIPAL_PATH || path.join(pastaRelatorios, 'Relatorios-jantar.xlsx'),
 };
 
+// Nome de aba no formato DD-MM-YY (o mesmo que browser.nomeAbaDaDataInicial gera).
+const PADRAO_NOME_ABA = /^(\d{2})-(\d{2})-(\d{2})$/;
+
+// Lê o arquivo principal (se existir) e devolve, em ISO (YYYY-MM-DD), a
+// dataInicial mais recente já usada em alguma aba. Retorna null se o
+// arquivo ainda não existe ou não tem nenhuma aba nesse formato de data.
+async function obterUltimaDataProcessada(caminhoPrincipal) {
+  if (!fs.existsSync(caminhoPrincipal)) return null;
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(caminhoPrincipal);
+
+  let maiorISO = null;
+  for (const worksheet of workbook.worksheets) {
+    const match = PADRAO_NOME_ABA.exec(worksheet.name);
+    if (!match) continue;
+    const [, dia, mes, ano2] = match;
+    const iso = `20${ano2}-${mes}-${dia}`;
+    if (maiorISO === null || iso > maiorISO) maiorISO = iso;
+  }
+  return maiorISO;
+}
+
+// Monta a lista (em ISO) de dataInicial que ainda faltam gerar, até ontem
+// (a mesma regra de sempre: nunca gera um relatório para hoje, porque o
+// período só fecha às horaFinal da madrugada seguinte).
+function listarDatasFaltantes(ultimaISO, ontemISO) {
+  if (ultimaISO === null) return [ontemISO]; // nenhuma aba ainda: comportamento igual ao de antes (só ontem)
+  if (ultimaISO >= ontemISO) return []; // já está em dia
+
+  const datas = [];
+  let cursor = browser.adicionarDiasISO(ultimaISO, 1);
+  while (cursor <= ontemISO) {
+    datas.push(cursor);
+    cursor = browser.adicionarDiasISO(cursor, 1);
+  }
+  return datas;
+}
+
 async function executarAutomacao() {
+  const { ontemISO } = browser.getHojeEOntem(config.timeZone);
+
+  console.log('Verificando última data processada em:', config.arquivoPrincipal);
+  const ultimaISO = await obterUltimaDataProcessada(config.arquivoPrincipal);
+  console.log(ultimaISO ? `Última data processada: ${ultimaISO}` : 'Nenhuma aba de data encontrada ainda.');
+
+  const datasFaltantes = listarDatasFaltantes(ultimaISO, ontemISO);
+  if (datasFaltantes.length === 0) {
+    console.log('Nenhum relatório pendente. Já está em dia até', ontemISO);
+    return;
+  }
+  console.log(`Relatórios pendentes (${datasFaltantes.length}): ${datasFaltantes.join(', ')}`);
+
   let browserInstance;
   try {
-    // A numeração dos logs ajuda a localizar em qual etapa uma execução falhou.
-    console.log('[1/8] Iniciando navegador...');
+    console.log('[1/3] Iniciando navegador...');
     browserInstance = await chromium.launch({ channel: 'chrome', headless: process.env.HEADLESS === 'true' });
     const context = await browserInstance.newContext({ acceptDownloads: true });
     const page = await context.newPage();
 
-    console.log('[2/8] Acessando sistema...');
+    console.log('[2/3] Acessando sistema...');
     await browser.login(page, config);
+
+    // Abre a tela de filtros e configura a aba "Bloqueios" (desmarcar Exibir
+    // Todos, marcar só o bloqueio desejado) UMA ÚNICA VEZ aqui fora do loop.
+    // Clicar em "Gerar Excel" não navega esta página (o download acontece
+    // numa aba separada, fechada logo em seguida), então a página principal
+    // continua aberta neste mesmo formulário entre uma data e outra — não há
+    // motivo para recarregar a tela nem reconfigurar os Bloqueios de novo, e
+    // recarregar era justamente o que resetava tudo para "Exibir Todos".
     await browser.abrirRelatorioAcessosFiltros(page, config);
-    console.log('[3/8] Preenchendo período...');
-    const periodo = await browser.preencherPeriodoEHorario(page, config);
     await browser.configurarBloqueios(page, config);
 
-    console.log('[4/8] Gerando relatório...');
-    const arquivoBaixado = await browser.gerarEBaixarExcel(context, page, config);
-    console.log('[5/8] Download concluído:');
-    console.log(`      ${path.basename(arquivoBaixado)}`);
+    console.log('[3/3] Gerando relatórios pendentes...');
+    for (let i = 0; i < datasFaltantes.length; i += 1) {
+      const dataInicialISO = datasFaltantes[i];
+      const periodo = browser.periodoParaDataInicial(dataInicialISO);
+      const prefixo = `  (${i + 1}/${datasFaltantes.length}) ${periodo.dataInicial}`;
 
-    const nomeAba = browser.nomeAbaDaDataInicial(periodo.dataInicial);
-    console.log('[6/8] Processando relatório...');
-    console.log('      Removendo última célula da coluna A e as duas primeiras linhas...');
-    console.log('      Criando tabela, removendo duplicatas e adicionando contagem de registros...');
-    console.log('[7/8] Abrindo arquivo principal...');
-    console.log(`      Criando aba: ${nomeAba}`);
-    const resultado = await inserirRelatorioNoArquivoPrincipal(config.arquivoPrincipal, nomeAba, arquivoBaixado);
-    console.log('[8/8] Arquivo salvo com sucesso.');
-    console.log(`      ${config.arquivoPrincipal}`);
-    console.log(`      Registros originais: ${resultado.registrosOriginais}; após duplicatas: ${resultado.dados.length}`);
+      try {
+        console.log(`${prefixo} - Preenchendo período...`);
+        await browser.preencherPeriodoEHorario(page, config, periodo);
+
+        console.log(`${prefixo} - Gerando e baixando excel...`);
+        const arquivoBaixado = await browser.gerarEBaixarExcel(context, page, config);
+
+        const nomeAba = browser.nomeAbaDaDataInicial(periodo.dataInicial);
+        console.log(`${prefixo} - Processando e salvando na aba "${nomeAba}"...`);
+        const resultado = await inserirRelatorioNoArquivoPrincipal(config.arquivoPrincipal, nomeAba, arquivoBaixado);
+        console.log(`${prefixo} - OK (registros originais: ${resultado.registrosOriginais}; após duplicatas: ${resultado.dados.length})`);
+      } catch (erroDoDia) {
+        // Um dia com problema não deve impedir os outros de serem gerados.
+        console.error(`${prefixo} - FALHOU: ${erroDoDia.message}`);
+        if (process.env.DEBUG === 'true') console.error(erroDoDia.stack);
+      }
+    }
+
     console.log('Concluído.');
   } catch (erro) {
     console.error(`Falha na automação: ${erro.message}`);
@@ -57,4 +125,4 @@ async function executarAutomacao() {
   }
 }
 
-module.exports = { executarAutomacao, config };
+module.exports = { executarAutomacao, config, obterUltimaDataProcessada, listarDatasFaltantes };
