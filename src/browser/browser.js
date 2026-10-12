@@ -216,7 +216,7 @@ async function configurarBloqueios(page, config) {
   };
 
   await clicarCheckbox('#exibir_bloqueios_all', false);
-  // A desmarcação de "Exibir todas" atualiza as opções individuais de forma
+  // A desmarcação de Exibir todas atualiza as opções individuais de forma
   // assíncrona; aguarde essa atualização antes de marcar a opção desejada.
   await page.waitForTimeout(300);
   await clicarCheckbox('input[name="bloqueios[]"][value="Catraca Refeitorio"]', true);
