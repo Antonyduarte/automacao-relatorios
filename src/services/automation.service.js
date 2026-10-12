@@ -1,11 +1,16 @@
 const fs = require('fs');
-const path = require('path');
 const { chromium } = require('playwright');
 const ExcelJS = require('exceljs');
 const browser = require('../browser/browser');
 const { inserirRelatorioNoArquivoPrincipal } = require('../excel/excel');
 
-const pastaRelatorios = process.env.RELATORIOS_PASTA || path.resolve(__dirname, '../../saida');
+if (!process.env.DOWNLOAD_PATH) {
+  throw new Error('DOWNLOAD_PATH precisa estar definido no .env.');
+}
+if (!process.env.EXCEL_JANTAR_PDZ_PATH) {
+  throw new Error('EXCEL_JANTAR_PDZ_PATH precisa estar definido no .env.');
+}
+
 const config = {
   baseUrl: process.env.TRUESAFE_URL || 'https://www.truesafeweb.com.br',
   email: process.env.TRUESAFE_EMAIL,
@@ -14,8 +19,8 @@ const config = {
   horaInicial: process.env.HORA_INICIAL || '22:30',
   horaFinal: process.env.HORA_FINAL || '02:30',
   bloqueioDesejado: process.env.BLOQUEIO || 'Catraca Refeitorio',
-  downloadDir: process.env.DOWNLOAD_PATH || path.join(pastaRelatorios, 'brutos'),
-  arquivoPrincipal: process.env.EXCEL_PRINCIPAL_PATH || path.join(pastaRelatorios, 'Relatorios-jantar.xlsx'),
+  downloadDir: process.env.DOWNLOAD_PATH,
+  arquivoPrincipal: process.env.EXCEL_JANTAR_PDZ_PATH,
 };
 
 // Nome de aba no formato DD-MM-YY (o mesmo que browser.nomeAbaDaDataInicial gera).

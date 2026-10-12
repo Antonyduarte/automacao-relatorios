@@ -178,17 +178,20 @@ async function preencherPeriodoEHorario(page, config, periodo) {
 }
 
 async function definirCheckbox(page, selector, marcado) {
-  await page.waitForSelector(selector, { state: 'attached' });
-  await page.evaluate(
-    ({ selector, marcado }) => {
-      const el = document.querySelector(selector);
-      if (!el) throw new Error(`Checkbox nao encontrado: ${selector}`);
-      if (el.checked !== marcado) {
-        el.checked = marcado;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    },
+  const checkbox = page.locator(selector).first();
+  await checkbox.waitFor({ state: 'attached' });
+
+  // Usar check/uncheck (em vez de alterar .checked via evaluate) dispara o
+  // mesmo fluxo de eventos de um clique real. O TrueSafe usa esse fluxo para
+  // atualizar os bloqueios quando "Exibir todas" é desmarcada.
+  if (marcado) {
+    await checkbox.check();
+  } else {
+    await checkbox.uncheck();
+  }
+
+  await page.waitForFunction(
+    ({ selector, marcado }) => document.querySelector(selector)?.checked === marcado,
     { selector, marcado }
   );
 }
@@ -196,9 +199,34 @@ async function definirCheckbox(page, selector, marcado) {
 async function configurarBloqueios(page, config) {
   await page.click('a[href="#bloqueios"]');
   await page.locator('#bloqueios').waitFor({ state: 'visible' });
-  await definirCheckbox(page, '#exibir_bloqueios_all', false);
+
+  // O TrueSafe oculta os inputs e usa o clique no próprio checkbox para
+  // atualizar os bloqueios. locator.check()/uncheck() não funciona nesse
+  // caso porque exige que o input esteja visível.
+  const clicarCheckbox = async (selector, marcado) => {
+    const checkbox = page.locator(selector).first();
+    await checkbox.waitFor({ state: 'attached' });
+    await checkbox.evaluate((elemento, deveMarcar) => {
+      if (elemento.checked !== deveMarcar) elemento.click();
+    }, marcado);
+    await page.waitForFunction(
+      ({ seletor, deveMarcar }) => document.querySelector(seletor)?.checked === deveMarcar,
+      { seletor: selector, deveMarcar: marcado }
+    );
+  };
+
+  await clicarCheckbox('#exibir_bloqueios_all', false);
+  // A desmarcação de "Exibir todas" atualiza as opções individuais de forma
+  // assíncrona; aguarde essa atualização antes de marcar a opção desejada.
   await page.waitForTimeout(300);
-  await definirCheckbox(page, `input[name="bloqueios[]"][value="Catraca Refeitorio"]`, true);
+  await clicarCheckbox('input[name="bloqueios[]"][value="Catraca Refeitorio"]', true);
+ 
+  await page.waitForFunction(() => {
+    const todas = document.querySelector('#exibir_bloqueios_all');
+    const refeitorio = document.querySelector('input[name="bloqueios[]"][value="Catraca Refeitorio"]');
+    return todas?.checked === false && refeitorio?.checked === true;
+  });
+
   console.log('Aba "Bloqueios" configurada.');
 }
 
