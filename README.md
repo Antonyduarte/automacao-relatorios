@@ -1,7 +1,8 @@
 # Automação de relatórios TrueSafe
 
 Automação em Node.js que acessa o TrueSafe Cloud, gera relatórios de acessos,
-baixa os arquivos e adiciona os dados tratados a uma planilha Excel.
+baixa os arquivos e adiciona os dados tratados a planilhas Excel de jantar e
+almoço.
 
 ## Requisitos
 
@@ -27,18 +28,33 @@ TRUESAFE_EMAIL=seu-email-de-login
 TRUESAFE_SENHA=sua-senha
 
 TIME_ZONE=America/Sao_Paulo
-HORA_INICIAL=22:30
-HORA_FINAL=02:30
-BLOQUEIO=Catraca Refeitorio
 
 EXCEL_JANTAR_PDZ_PATH=C:\caminho\para\Relatorios-jantar.xlsx
+EXCEL_ALMOCO_PDZ_PATH=C:\caminho\para\Relatorios-almoco.xlsx
 DOWNLOAD_PATH=C:\caminho\para\downloads
 HEADLESS=false
 ```
 
-O arquivo principal informado em `EXCEL_JANTAR_PDZ_PATH` precisa existir e ser
-um arquivo `.xlsx` válido. O diretório definido em `DOWNLOAD_PATH` será criado
-automaticamente, caso ainda não exista.
+Os arquivos informados em `EXCEL_JANTAR_PDZ_PATH` e
+`EXCEL_ALMOCO_PDZ_PATH` precisam existir e ser arquivos `.xlsx` válidos. O
+diretório definido em `DOWNLOAD_PATH` será criado automaticamente, caso ainda
+não exista.
+
+As configurações abaixo são opcionais e permitem substituir os valores padrão
+de cada perfil:
+
+```env
+HORA_INICIAL_JANTAR=22:30
+HORA_FINAL_JANTAR=02:30
+BLOQUEIO_JANTAR=Catraca Refeitorio
+
+HORA_INICIAL_ALMOCO=10:30
+HORA_FINAL_ALMOCO=14:30
+BLOQUEIO_ALMOCO=Catraca Refeitorio
+```
+
+Também é possível usar `HORA_INICIAL`, `HORA_FINAL` e `BLOQUEIO` como valores
+comuns. Eles funcionam como alternativa para o perfil de jantar.
 
 ## Execução
 
@@ -46,13 +62,18 @@ automaticamente, caso ainda não exista.
 npm start
 ```
 
-Por padrão, a automação calcula o período no fuso de `TIME_ZONE`, usando o dia
-anterior como data inicial e o dia atual como data final. Os horários são
-controlados por `HORA_INICIAL` e `HORA_FINAL`.
+O login é feito uma única vez e os relatórios são processados em sequência para
+os perfis de jantar e almoço. O período é calculado no fuso de `TIME_ZONE`,
+usando o dia anterior como data inicial.
+
+O relatório de jantar considera o período entre `HORA_INICIAL_JANTAR` e
+`HORA_FINAL_JANTAR` cruzando a madrugada. O relatório de almoço usa o mesmo dia
+para as datas inicial e final.
 
 Quando a planilha já possui abas de relatórios, o programa identifica a última
-data processada e tenta gerar somente os dias pendentes. Cada relatório é salvo
-em uma aba no formato `DD-MM-YY`. Se a aba já existir, ela não é sobrescrita.
+data processada e tenta gerar somente os dias pendentes, até o dia anterior.
+Cada relatório é salvo em uma aba no formato `DD-MM-YY`. Se a aba já existir,
+ela não é sobrescrita.
 
 Para executar sem abrir a janela do Chrome:
 
@@ -73,9 +94,9 @@ src/
 └── index.js
 ```
 
-- `browser.js`: login, filtros, período e download do relatório;
+- `browser.js`: login, filtros, períodos e download dos relatórios;
 - `excel.js`: leitura, limpeza, deduplicação e formatação dos dados;
-- `automation.service.js`: configuração e fluxo principal da automação;
+- `automation.service.js`: configuração dos perfis e fluxo principal da automação;
 - `index.js`: ponto de entrada da aplicação.
 
 ## Arquivos ignorados
