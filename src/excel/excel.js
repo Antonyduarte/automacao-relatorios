@@ -114,7 +114,7 @@ function nomeTabelaSeguro(nome) {
   return `Tabela_${nome.replace(/[^A-Za-z0-9_]/g, '_')}`;
 }
 
-function adicionarRelatorioNaAba(workbook, nomeAba, relatorio) {
+function adicionarRelatorioNaAba(workbook, nomeAba, relatorio, tituloTabela = 'Relatório Jantar') {
   if (workbook.getWorksheet(nomeAba)) {
     throw new Error(`Já existe uma aba chamada ${nomeAba}. O relatório dessa data já pode ter sido processado.`);
   }
@@ -130,7 +130,8 @@ function adicionarRelatorioNaAba(workbook, nomeAba, relatorio) {
   while (nomesTabelasExistentes.has(nomeTabela)) nomeTabela = `${nomeTabelaSeguro(nomeAba)}_${indiceTabela++}`;
 
   // Linha de título acima da tabela (linha 1), fora da tabela em si.
-  worksheet.getCell('A1').value = 'Relatório Jantar';
+  // O texto vem de quem chamou (ex.: "Relatório Jantar", "Relatório Almoço").
+  worksheet.getCell('A1').value = tituloTabela;
   worksheet.mergeCells('A1:K1');
   worksheet.getCell('A1').alignment = {
     horizontal: 'center',
@@ -180,7 +181,7 @@ function adicionarRelatorioNaAba(workbook, nomeAba, relatorio) {
   return worksheet;
 }
 
-async function inserirRelatorioNoArquivoPrincipal(caminhoPrincipal, nomeAba, caminhoRelatorio) {
+async function inserirRelatorioNoArquivoPrincipal(caminhoPrincipal, nomeAba, caminhoRelatorio, tituloTabela) {
   if (!fs.existsSync(caminhoPrincipal)) throw new Error(`Arquivo principal não encontrado: ${caminhoPrincipal}`);
   if (fs.statSync(caminhoPrincipal).size === 0) throw new Error(`O arquivo principal está vazio ou não é um Excel válido: ${caminhoPrincipal}`);
 
@@ -190,7 +191,7 @@ async function inserirRelatorioNoArquivoPrincipal(caminhoPrincipal, nomeAba, cam
   try { await workbook.xlsx.readFile(caminhoPrincipal); }
   catch (erro) { throw new Error(`Não foi possível abrir o arquivo principal. Verifique se é um .xlsx válido e se não está bloqueado pelo Excel. ${erro.message}`); }
   const relatorio = await prepararRelatorio(caminhoRelatorio);
-  adicionarRelatorioNaAba(workbook, nomeAba, relatorio);
+  adicionarRelatorioNaAba(workbook, nomeAba, relatorio, tituloTabela);
   await workbook.xlsx.writeFile(caminhoPrincipal);
   return relatorio;
 }

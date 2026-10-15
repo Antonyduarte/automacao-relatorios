@@ -69,6 +69,13 @@ function periodoParaDataInicial(dataInicialISO) {
   };
 }
 
+// Monta o período de um relatório que NÃO cruza a madrugada (ex.: almoço):
+// dataInicial e dataFinal são sempre o mesmo dia.
+function periodoMesmoDia(dataInicialISO) {
+  const dataBr = isoParaBr(dataInicialISO);
+  return { dataInicial: dataBr, dataFinal: dataBr };
+}
+
 async function login(page, config) {
   await page.goto(config.baseUrl, { waitUntil: 'domcontentloaded' });
 
@@ -215,19 +222,28 @@ async function configurarBloqueios(page, config) {
     );
   };
 
+  // Lido de config.bloqueioDesejado (cada perfil — Jantar, Almoço, etc. —
+  // define o seu); por ora todos os perfis usam o mesmo valor, mas a
+  // função não fica mais presa a um bloqueio fixo no código.
+  const bloqueioDesejado = config.bloqueioDesejado;
+  const seletorBloqueioDesejado = `input[name="bloqueios[]"][value="${bloqueioDesejado}"]`;
+
   await clicarCheckbox('#exibir_bloqueios_all', false);
   // A desmarcação de Exibir todas atualiza as opções individuais de forma
   // assíncrona; aguarde essa atualização antes de marcar a opção desejada.
   await page.waitForTimeout(300);
-  await clicarCheckbox('input[name="bloqueios[]"][value="Catraca Refeitorio"]', true);
- 
-  await page.waitForFunction(() => {
-    const todas = document.querySelector('#exibir_bloqueios_all');
-    const refeitorio = document.querySelector('input[name="bloqueios[]"][value="Catraca Refeitorio"]');
-    return todas?.checked === false && refeitorio?.checked === true;
-  });
+  await clicarCheckbox(seletorBloqueioDesejado, true);
 
-  console.log('Aba "Bloqueios" configurada.');
+  await page.waitForFunction(
+    ({ seletorBloqueioDesejado }) => {
+      const todas = document.querySelector('#exibir_bloqueios_all');
+      const desejado = document.querySelector(seletorBloqueioDesejado);
+      return todas?.checked === false && desejado?.checked === true;
+    },
+    { seletorBloqueioDesejado }
+  );
+
+  console.log(`Aba "Bloqueios" configurada (${bloqueioDesejado}).`);
 }
 
 async function gerarEBaixarExcel(context, page, config) {
@@ -256,6 +272,7 @@ module.exports = {
   getHojeEOntem,
   adicionarDiasISO,
   periodoParaDataInicial,
+  periodoMesmoDia,
   gerarEBaixarExcel,
   abrirRelatorioAcessosFiltros,
   configurarBloqueios,
