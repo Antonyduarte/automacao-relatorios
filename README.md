@@ -1,14 +1,24 @@
 # Automação de relatórios TrueSafe
 
-Automação em Node.js que acessa o TrueSafe Cloud, gera relatórios de acessos,
-baixa os arquivos e adiciona os dados tratados a planilhas Excel de jantar e
-almoço.
+Automação em Node.js que acessa o TrueSafe Cloud, gera relatórios de acessos
+para os períodos de jantar e almoço, baixa os arquivos exportados e adiciona
+os dados tratados a planilhas Excel.
+
+## O que a automação faz
+
+- acessa o TrueSafe Cloud e realiza o login;
+- filtra o bloqueio configurado;
+- gera relatórios de jantar e almoço em uma única sessão;
+- limpa os arquivos exportados, mantém as 11 colunas principais e remove
+  duplicidades por usuário e documento;
+- grava cada dia em uma aba `DD-MM-YY`, sem sobrescrever abas existentes;
+- identifica os dias pendentes até ontem e processa cada perfil separadamente.
 
 ## Requisitos
 
 - Node.js 18 ou superior;
-- acesso válido ao TrueSafe Cloud;
-- Google Chrome instalado, quando a execução for feita com `HEADLESS=false`.
+- acesso autorizado ao TrueSafe Cloud;
+- Google Chrome instalado quando `HEADLESS=false` (padrão).
 
 ## Instalação
 
@@ -19,8 +29,8 @@ npx playwright install chrome
 
 ## Configuração
 
-Crie um arquivo `.env` na raiz do projeto. Nunca publique esse arquivo nem
-compartilhe suas credenciais.
+Copie `.env.example` para `.env` e preencha os valores. O arquivo `.env` não
+deve ser publicado nem compartilhado, pois contém credenciais.
 
 ```env
 TRUESAFE_URL=https://www.truesafeweb.com.br
@@ -35,13 +45,14 @@ DOWNLOAD_PATH=C:\caminho\para\downloads
 HEADLESS=false
 ```
 
-Os arquivos informados em `EXCEL_JANTAR_PDZ_PATH` e
-`EXCEL_ALMOCO_PDZ_PATH` precisam existir e ser arquivos `.xlsx` válidos. O
-diretório definido em `DOWNLOAD_PATH` será criado automaticamente, caso ainda
-não exista.
+Os dois arquivos definidos em `EXCEL_JANTAR_PDZ_PATH` e
+`EXCEL_ALMOCO_PDZ_PATH` precisam existir e ser arquivos `.xlsx` válidos. A pasta
+de `DOWNLOAD_PATH` é criada automaticamente quando necessário.
 
-As configurações abaixo são opcionais e permitem substituir os valores padrão
-de cada perfil:
+### Horários e bloqueios
+
+As variáveis abaixo são opcionais. Se não forem informadas, serão usados os
+valores padrão indicados:
 
 ```env
 HORA_INICIAL_JANTAR=22:30
@@ -53,8 +64,9 @@ HORA_FINAL_ALMOCO=14:30
 BLOQUEIO_ALMOCO=Catraca Refeitorio
 ```
 
-Também é possível usar `HORA_INICIAL`, `HORA_FINAL` e `BLOQUEIO` como valores
-comuns. Eles funcionam como alternativa para o perfil de jantar.
+Também é possível definir `HORA_INICIAL`, `HORA_FINAL` e `BLOQUEIO` como
+valores comuns. Eles funcionam como alternativa para o perfil de jantar e para
+o bloqueio do almoço quando não houver uma configuração específica.
 
 ## Execução
 
@@ -62,18 +74,14 @@ comuns. Eles funcionam como alternativa para o perfil de jantar.
 npm start
 ```
 
-O login é feito uma única vez e os relatórios são processados em sequência para
-os perfis de jantar e almoço. O período é calculado no fuso de `TIME_ZONE`,
-usando o dia anterior como data inicial.
+O login é realizado uma vez. O período de jantar cruza a madrugada: a data
+final é o dia seguinte à data inicial. O período de almoço usa a mesma data
+para início e fim. Em ambos os casos, o dia atual não é processado; o limite é
+sempre o dia anterior no fuso definido em `TIME_ZONE`.
 
-O relatório de jantar considera o período entre `HORA_INICIAL_JANTAR` e
-`HORA_FINAL_JANTAR` cruzando a madrugada. O relatório de almoço usa o mesmo dia
-para as datas inicial e final.
-
-Quando a planilha já possui abas de relatórios, o programa identifica a última
-data processada e tenta gerar somente os dias pendentes, até o dia anterior.
-Cada relatório é salvo em uma aba no formato `DD-MM-YY`. Se a aba já existir,
-ela não é sobrescrita.
+Na primeira execução de um arquivo sem abas no formato `DD-MM-YY`, somente o
+relatório de ontem é gerado. Nas execuções seguintes, a automação continua a
+partir da maior data já registrada e processa eventuais dias pendentes.
 
 Para executar sem abrir a janela do Chrome:
 
@@ -96,25 +104,13 @@ src/
 
 - `browser.js`: login, filtros, períodos e download dos relatórios;
 - `excel.js`: leitura, limpeza, deduplicação e formatação dos dados;
-- `automation.service.js`: configuração dos perfis e fluxo principal da automação;
+- `automation.service.js`: configuração dos perfis e fluxo da automação;
 - `index.js`: ponto de entrada da aplicação.
 
-## Arquivos ignorados
+## Arquivos locais e segurança
 
-Credenciais, dependências e relatórios locais são mantidos fora do Git por meio
-do `.gitignore`:
+O `.gitignore` mantém fora do Git as credenciais, dependências e arquivos
+gerados localmente: `.env`, `node_modules/`, `downloads/`, `saida/` e
+`brutos/`.
 
-- `.env`;
-- `node_modules/`;
-- `downloads/`;
-- `saida/`;
-- `brutos/`.
-
-Antes de publicar o projeto, confirme que nenhum relatório contendo nomes,
-documentos ou outros dados pessoais foi adicionado ao repositório.
-
-## Aviso de segurança e uso
-
-Use a automação somente com autorização para acessar o sistema e os dados
-gerados. As credenciais devem ser armazenadas apenas no `.env` ou em um gerenciador
-seguro de segredos. Se uma senha for exposta em um commit, troque-a imediatamente.
+    
