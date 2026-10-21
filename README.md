@@ -89,6 +89,10 @@ Para executar sem abrir a janela do Chrome:
 HEADLESS=true
 ```
 
+Cada execução também é registrada em `saida/automacao.log`, com data, hora e
+nivel da mensagem. O arquivo é acrescentado ao longo do tempo e não substitui
+os registros anteriores.
+
 ## Estrutura
 
 ```text
@@ -112,5 +116,3 @@ src/
 O `.gitignore` mantém fora do Git as credenciais, dependências e arquivos
 gerados localmente: `.env`, `node_modules/`, `downloads/`, `saida/` e
 `brutos/`.
-
-    
